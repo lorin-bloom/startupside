@@ -1,6 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { config, pricing } from "./config";
+import { config, isHaiku, pricing, type ModelRole } from "./config";
 
 let client: Anthropic | null = null;
 const anthropic = () => (client ??= new Anthropic({ apiKey: config.apiKey, maxRetries: 2, timeout: 280_000 }));
@@ -23,6 +23,8 @@ type Opts = {
   maxFetches?: number;
   maxTokens?: number;
   effort?: "low" | "medium" | "high";
+  /** "research" (cheap, gathers facts) or "analysis" (stronger, writes judgments). Default research. */
+  role?: ModelRole;
 };
 
 const URL_RE = /https?:\/\/[^\s"'<>\\)\]]+/g;
@@ -44,17 +46,19 @@ export function normalizeUrl(u: string): string {
  * actually returned so citations can be checked against real retrievals.
  */
 export async function runAgent(opts: Opts): Promise<AgentRun> {
+  const model = config.models[opts.role ?? "research"];
+  const haiku = isHaiku(model);
   // Haiku 5.5 doesn't support the newer (dynamic-filtering) web tool versions.
   const tools: Anthropic.Beta.BetaToolUnion[] = [];
   if (opts.maxSearches)
     tools.push(
-      config.isHaiku
+      haiku
         ? { type: "web_search_20250305", name: "web_search", max_uses: opts.maxSearches }
         : { type: "web_search_20260209", name: "web_search", max_uses: opts.maxSearches },
     );
   if (opts.maxFetches)
     tools.push(
-      config.isHaiku
+      haiku
         ? { type: "web_fetch_20250910", name: "web_fetch", max_uses: opts.maxFetches, max_content_tokens: 8000 }
         : { type: "web_fetch_20260209", name: "web_fetch", max_uses: opts.maxFetches, max_content_tokens: 12000 },
     );
@@ -69,10 +73,10 @@ export async function runAgent(opts: Opts): Promise<AgentRun> {
 
   for (let turn = 0; turn < 5; turn++) {
     const stream = anthropic().beta.messages.stream({
-      model: config.model,
+      model,
       max_tokens: opts.maxTokens ?? 24000,
       // Server-side refusal fallback exists for Opus/Sonnet, not for Haiku.
-      ...(config.isHaiku ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
+      ...(haiku ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
       thinking: { type: "adaptive" },
       output_config: { effort: opts.effort ?? "medium" },
       system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
@@ -82,7 +86,7 @@ export async function runAgent(opts: Opts): Promise<AgentRun> {
     const msg = await stream.finalMessage();
 
     const u = msg.usage;
-    const price = pricing((u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0));
+    const price = pricing(model, (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0));
     costUsd +=
       ((u.input_tokens ?? 0) * price.input +
         (u.output_tokens ?? 0) * price.output +

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { Report, Status } from "@/lib/schema";
 import { AskPanel } from "./AskPanel";
+import { DeepenProvider } from "./Deepen";
 import { money } from "./charts";
 import {
   FinancialsSection,
@@ -229,7 +230,16 @@ function Expanded({ k, r }: { k: CardKey; r: Report }) {
   return <div className="rise rounded-2xl border border-line bg-card p-5 sm:p-6">{body[k]}</div>;
 }
 
-export function ReportView({ report: r, onRefresh }: { report: Report; onRefresh?: () => void }) {
+export function ReportView({
+  report: r,
+  onRefresh,
+  onReportChange,
+}: {
+  report: Report;
+  onRefresh?: () => void;
+  /** Called with the updated report after on-demand deep research. */
+  onReportChange?: (r: Report) => void;
+}) {
   const index = useMemo(() => buildSourceIndex(r.sources), [r.sources]);
   const [open, setOpen] = useState<CardKey | null>(null);
   const s = r.snapshot;
@@ -269,6 +279,7 @@ export function ReportView({ report: r, onRefresh }: { report: Report; onRefresh
 
   return (
     <SourcesContext.Provider value={index}>
+      <DeepenProvider report={r} onReportChange={onReportChange}>
       <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Link href="/" className="shrink-0 font-serif text-[1.35rem] leading-none tracking-tight">
@@ -388,6 +399,7 @@ export function ReportView({ report: r, onRefresh }: { report: Report; onRefresh
       </main>
 
       <AskPanel report={r} />
+      </DeepenProvider>
     </SourcesContext.Provider>
   );
 }

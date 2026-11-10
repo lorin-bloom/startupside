@@ -1,19 +1,24 @@
 import "server-only";
-import { config } from "./config";
+import { config, isHaiku } from "./config";
 import { extractJson, normalizeUrl, runAgent, apiErrorMessage } from "./claude";
 import { findJobBoard, type JobBoard } from "./jobs";
-import { capitalPrompt, marketPrompt, peoplePrompt, RESEARCH_SYSTEM, synthesisPrompt, type SiteContext } from "./prompts";
+import { corePrompt, deepPrompt, RESEARCH_SYSTEM, synthesisPrompt, type DeepSection, type SiteContext } from "./prompts";
 import { Report, type Source } from "./schema";
 import { readSite } from "./site";
 
-export type StepId = "site" | "jobs" | "people" | "capital" | "market" | "synthesis";
+export type StepId = "site" | "jobs" | "core" | "synthesis";
 export type Emit = (step: StepId, state: "active" | "done" | "warn", message?: string) => void;
 
 type Json = Record<string, unknown>;
 type AgentOutput = { data: Json; sources: Source[]; note?: string };
 
+/** Search budgets. Haiku reads raw search results (no dynamic filtering), so it gets
+ * fewer searches to keep each prompt under 100K tokens, where its cheaper rate applies. */
+const haikuResearch = isHaiku(config.models.research);
+const budget = (strong: number, haiku: number) => (haikuResearch ? haiku : strong);
+
 /**
- * Re-keys an agent's sources with a prefix (so three parallel agents can't
+ * Re-keys an agent's sources with a prefix (so separate research runs can't
  * collide), drops any source whose URL never appeared in real retrieval, and
  * downgrades "verified" claims that are left without evidence.
  */
@@ -64,37 +69,22 @@ function reconcileSources(raw: Json, prefix: string, allowed: Set<string> | null
   return { data, sources, note };
 }
 
-async function agent(
-  step: StepId,
-  prefix: string,
-  prompt: string,
-  base: Set<string>,
-  emit: Emit,
-  limits: { maxSearches: number; maxFetches: number },
-): Promise<{ out: AgentOutput | null; cost: number; retrieved: Set<string> }> {
-  emit(step, "active");
-  try {
-    const run = await runAgent({ system: RESEARCH_SYSTEM, prompt, ...limits });
-    const retrieved = new Set([...base, ...run.retrievedUrls, ...run.citations.map((c) => normalizeUrl(c.url))]);
-    const allowed = run.retrievedUrls.size > 0 ? retrieved : null;
-    const out = reconcileSources(extractJson(run.text) as Json, prefix, allowed);
-    if (!allowed) out.note = "Some links could not be automatically cross-checked against retrieved pages.";
-    emit(step, "done");
-    return { out, cost: run.costUsd, retrieved };
-  } catch (err) {
-    emit(step, "warn", apiErrorMessage(err));
-    return { out: null, cost: 0, retrieved: base };
-  }
+/** Runs one web-research agent on the research model and cross-checks its citations. */
+async function research(prompt: string, prefix: string, base: Set<string>, limits: { maxSearches: number; maxFetches: number }) {
+  const run = await runAgent({ system: RESEARCH_SYSTEM, prompt, role: "research", ...limits });
+  const retrieved = new Set([...base, ...run.retrievedUrls, ...run.citations.map((c) => normalizeUrl(c.url))]);
+  const allowed = run.retrievedUrls.size > 0 ? retrieved : null;
+  const out = reconcileSources(extractJson(run.text) as Json, prefix, allowed);
+  if (!allowed) out.note = "Some links could not be automatically cross-checked against retrieved pages.";
+  return { out, cost: run.costUsd, retrieved };
 }
 
 function jobsSummary(board: JobBoard | null): string {
   if (!board) return "Open roles: no public job board (Ashby/Greenhouse/Lever) was found.";
   const byDept = new Map<string, number>();
   for (const r of board.roles) byDept.set(r.department, (byDept.get(r.department) ?? 0) + 1);
-  const lines = board.roles.slice(0, 60).map((r) => `- ${r.title} | ${r.department} | ${r.location}`);
   return `Open roles (exact, from the public ${board.provider} job board ${board.boardUrl}): ${board.roles.length} total.
-By department: ${[...byDept].map(([d, n]) => `${d}: ${n}`).join(", ")}
-${lines.join("\n")}`;
+By department: ${[...byDept].map(([d, n]) => `${d}: ${n}`).join(", ")}`;
 }
 
 export async function buildReport(domain: string, emit: Emit): Promise<{ report: Report; costUsd: number }> {
@@ -110,51 +100,47 @@ export async function buildReport(domain: string, emit: Emit): Promise<{ report:
   const board = await findJobBoard(domain, site.links).catch(() => null);
   emit("jobs", board ? "done" : "warn", board ? `${board.roles.length} open roles on ${board.provider}` : "No public job board found");
 
+  // One research pass for the essentials of every section (cheap model).
   const ctx: SiteContext = { domain, url: site.url, title: site.title, description: site.description, text: site.text, careersUrl: site.careersUrl, today };
   const base = new Set([site.url, site.careersUrl, board?.boardUrl ?? "", `https://${domain}`].filter(Boolean).map(normalizeUrl));
+  emit("core", "active");
+  let core: Awaited<ReturnType<typeof research>>;
+  try {
+    core = await research(corePrompt(ctx, jobsSummary(board)), "c", base, { maxSearches: budget(8, 6), maxFetches: board ? 1 : budget(3, 2) });
+    emit("core", "done");
+  } catch (err) {
+    emit("core", "warn", apiErrorMessage(err));
+    throw new Error(`Research failed: ${apiErrorMessage(err)} Please try again later.`);
+  }
 
-  // Haiku reads raw search results (no dynamic filtering), so fewer searches keep
-  // each prompt under 100K tokens, where its cheaper rate card applies.
-  const n = (opus: number, haiku: number) => (config.isHaiku ? haiku : opus);
-  const [people, capital, market] = await Promise.all([
-    agent("people", "p", peoplePrompt(ctx), base, emit, { maxSearches: n(8, 5), maxFetches: n(4, 2) }),
-    agent("capital", "c", capitalPrompt(ctx), base, emit, { maxSearches: n(8, 5), maxFetches: n(4, 2) }),
-    agent("market", "m", marketPrompt(ctx, jobsSummary(board)), base, emit, { maxSearches: n(6, 4), maxFetches: board ? 1 : n(4, 2) }),
-  ]);
-  if (!people.out && !capital.out && !market.out) throw new Error("Research failed for every section. Please try again later.");
-
-  const homepageSource: Source = { id: "w1", title: site.title || domain, url: site.url, publisher: domain, date: "" };
-  const boardSource: Source | null = board
-    ? { id: "w2", title: `${board.provider} job board`, url: board.boardUrl, publisher: board.provider, date: today }
-    : null;
-
-  const p = people.out?.data ?? {};
-  const c = capital.out?.data ?? {};
-  const m = market.out?.data ?? {};
-  const pCompany = (p.company ?? {}) as Json;
-  const mHiring = (m.hiring ?? {}) as Json;
-  const modelRoles = Array.isArray(mHiring.roles) ? mHiring.roles : [];
-
-  const sources = [homepageSource, ...(boardSource ? [boardSource] : []), ...(people.out?.sources ?? []), ...(capital.out?.sources ?? []), ...(market.out?.sources ?? [])];
+  const c = core.out.data;
+  const cCompany = (c.company ?? {}) as Json;
+  const cHiring = (c.hiring ?? {}) as Json;
+  const modelRoles = Array.isArray(cHiring.roles) ? cHiring.roles : [];
+  const sources: Source[] = [
+    { id: "w1", title: site.title || domain, url: site.url, publisher: domain, date: "" },
+    ...(board ? [{ id: "w2", title: `${board.provider} job board`, url: board.boardUrl, publisher: board.provider, date: today }] : []),
+    ...core.out.sources,
+  ];
 
   const draft = {
     version: 1,
     mode: "live",
     researchedAt: new Date().toISOString(),
     company: {
-      ...pCompany,
-      name: (pCompany.name as string) || site.siteName || site.title.split(/[|–—-]/)[0].trim() || domain,
+      ...cCompany,
+      name: (cCompany.name as string) || site.siteName || site.title.split(/[|–—-]/)[0].trim() || domain,
       website: site.url,
       domain,
       logoUrl: site.logoUrl,
-      sources: [...((pCompany.sources as string[]) ?? []), "w1"],
+      sources: [...((cCompany.sources as string[]) ?? []), "w1"],
     },
-    founders: p.founders ?? {},
-    team: p.team ?? {},
+    founders: c.founders ?? {},
+    team: c.team ?? {},
     funding: c.funding ?? {},
     financials: c.financials ?? {},
     news: c.news ?? [],
-    business: m.business ?? {},
+    business: c.business ?? {},
     hiring: board
       ? {
           checkedAt: today,
@@ -164,7 +150,7 @@ export async function buildReport(domain: string, emit: Emit): Promise<{ report:
           totalOpenings: board.roles.length,
           note: "",
           roles: board.roles,
-          interpretation: mHiring.interpretation ?? [],
+          interpretation: cHiring.interpretation ?? [],
         }
       : {
           checkedAt: today,
@@ -172,21 +158,22 @@ export async function buildReport(domain: string, emit: Emit): Promise<{ report:
           sourceUrl: site.careersUrl,
           method: modelRoles.length ? "careers-page" : "none",
           totalOpenings: modelRoles.length ? modelRoles.length : null,
-          note: (mHiring.note as string) || "",
+          note: (cHiring.note as string) || "",
           roles: modelRoles,
-          interpretation: mHiring.interpretation ?? [],
+          interpretation: cHiring.interpretation ?? [],
         },
     sources,
-    notes: [people, capital, market].map((r) => r.out?.note).filter(Boolean),
+    notes: [core.out.note].filter(Boolean),
+    deepened: [],
   };
 
-  // Executive layer: written only from the research above, no web access.
+  // Executive layer (stronger model): written only from the research above, no web access.
   emit("synthesis", "active");
   let synthCost = 0;
   let synth: Json = {};
   try {
     const compact = { ...draft, hiring: { ...draft.hiring, roles: undefined, rolesByDepartment: countBy(draft.hiring.roles as { department: string }[]) } };
-    const run = await runAgent({ system: RESEARCH_SYSTEM, prompt: synthesisPrompt(JSON.stringify(compact)), maxTokens: 12000 });
+    const run = await runAgent({ system: RESEARCH_SYSTEM, prompt: synthesisPrompt(JSON.stringify(compact)), maxTokens: 12000, role: "analysis" });
     synthCost = run.costUsd;
     synth = extractJson(run.text) as Json;
     const validIds = new Set(sources.map((s) => s.id));
@@ -202,10 +189,62 @@ export async function buildReport(domain: string, emit: Emit): Promise<{ report:
     investorCase: synth.investorCase ?? {},
     notes: [...draft.notes, ...(Array.isArray(synth.notes) ? synth.notes : [])],
   });
+  tidy(report, core.retrieved, site.siteName || domain);
+  if (site.linkedinUrl) report.company.linkedinUrl = site.linkedinUrl;
 
-  // Safety net: keep short display fields short even if the model over-explains.
+  const costUsd = core.cost + synthCost;
+  console.log(`[report] ${domain}: $${costUsd.toFixed(3)} (research ${config.models.research}, analysis ${config.models.analysis})`);
+  return { report, costUsd };
+}
+
+/**
+ * Deeper research on one section, run only when a reader asks for it. The new
+ * findings replace that section's fields; everything else is kept as is.
+ */
+export async function deepenReport(base: Report, section: DeepSection): Promise<{ report: Report; costUsd: number }> {
+  const known = {
+    founders: { founders: base.founders, leadershipHires: base.team.leadershipHires },
+    investors: { funding: { total: base.funding.total, rounds: base.funding.rounds, investors: base.funding.investors } },
+    financials: { financials: base.financials },
+    market: { business: base.business },
+  }[section];
+  const prompt = deepPrompt(section, base.company.name || base.company.domain, base.company.website, new Date().toISOString().slice(0, 10), JSON.stringify(known));
+  const prefix = { founders: "df", investors: "di", financials: "dn", market: "dm" }[section];
+  const existing = new Set(base.sources.map((s) => normalizeUrl(s.url)));
+  const { out, cost, retrieved } = await research(prompt, prefix, existing, { maxSearches: budget(6, 4), maxFetches: budget(3, 2) });
+
+  const d = out.data;
+  const next: Json = JSON.parse(JSON.stringify(base));
+  const merge = (key: string, fields: Json | undefined) => {
+    if (!fields) return;
+    const target = (next[key] ?? {}) as Json;
+    for (const [k, v] of Object.entries(fields)) {
+      // Keep what we had when the deep dive came back empty for a field.
+      if (v == null || (Array.isArray(v) && v.length === 0)) continue;
+      target[k] = v;
+    }
+    next[key] = target;
+  };
+  if (section === "founders") {
+    merge("founders", d.founders as Json);
+    merge("team", d.team as Json);
+  } else if (section === "investors") merge("funding", d.funding as Json);
+  else if (section === "financials") merge("financials", d.financials as Json);
+  else merge("business", d.business as Json);
+
+  next.sources = [...base.sources, ...out.sources];
+  next.deepened = [...new Set([...base.deepened, section])];
+  if (out.note) next.notes = [...base.notes, out.note];
+  const report = Report.parse(next);
+  tidy(report, retrieved, base.company.name);
+  console.log(`[deepen] ${base.company.domain} ${section}: $${cost.toFixed(3)}`);
+  return { report, costUsd: cost };
+}
+
+/** Safety nets applied to every report: short fields stay short, LinkedIn links must be real. */
+function tidy(report: Report, retrieved: Set<string>, fallbackName: string) {
   const co = report.company;
-  co.name = clip(co.name, 40) || site.siteName || domain;
+  co.name = clip(co.name, 40) || fallbackName;
   co.stage = clip(co.stage, 28);
   co.founded = clip(co.founded, 24);
   co.headquarters = clip(co.headquarters, 48);
@@ -215,16 +254,10 @@ export async function buildReport(domain: string, emit: Emit): Promise<{ report:
   report.team.headcountEstimates = report.team.headcountEstimates.slice(0, 6);
   report.notes = report.notes.slice(0, 4);
 
-  // LinkedIn URLs must come from real retrieval, never from a guess.
-  const seen = new Set([...people.retrieved, ...capital.retrieved]);
-  if (site.linkedinUrl) report.company.linkedinUrl = site.linkedinUrl;
-  else if (report.company.linkedinUrl && !seen.has(normalizeUrl(report.company.linkedinUrl))) report.company.linkedinUrl = "";
+  const seen = new Set([...retrieved, ...report.sources.map((s) => normalizeUrl(s.url))]);
+  if (co.linkedinUrl && !seen.has(normalizeUrl(co.linkedinUrl))) co.linkedinUrl = "";
   for (const f of report.founders.people) if (f.linkedinUrl && !seen.has(normalizeUrl(f.linkedinUrl))) f.linkedinUrl = "";
   for (const i of report.funding.investors) if (i.linkedinUrl && !seen.has(normalizeUrl(i.linkedinUrl))) i.linkedinUrl = "";
-
-  const costUsd = people.cost + capital.cost + market.cost + synthCost;
-  console.log(`[report] ${domain}: $${costUsd.toFixed(3)} (${config.model})`);
-  return { report, costUsd };
 }
 
 /** Cuts at the first aside ("(...", "; ...", " - ...", ". ...") and enforces a maximum length. */

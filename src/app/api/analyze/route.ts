@@ -3,13 +3,12 @@ import { normalizeDomain } from "@/lib/domain";
 import { checkRateLimit, clientIp, reserveSpend } from "@/lib/limits";
 import { buildReport } from "@/lib/pipeline";
 import { getSample } from "@/data/samples";
-import { Report } from "@/lib/schema";
-import { store } from "@/lib/store";
+import { getCachedReport, saveReport } from "@/lib/report-cache";
+import type { Report } from "@/lib/schema";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const cacheKey = (domain: string) => `report:v1:${domain}`;
 const inflight = new Map<string, Promise<Report>>();
 
 type Event =
@@ -51,9 +50,9 @@ export async function POST(req: Request) {
 
       try {
         if (!body.refresh) {
-          const hit = await store.get(cacheKey(domain));
+          const hit = await getCachedReport(domain);
           if (hit) {
-            send({ type: "result", report: Report.parse(JSON.parse(hit)), cached: true });
+            send({ type: "result", report: hit, cached: true });
             return controller.close();
           }
         }
@@ -78,7 +77,7 @@ export async function POST(req: Request) {
                 send({ type: "progress", step, state, message }),
               );
               cost = costUsd;
-              await store.set(cacheKey(domain), JSON.stringify(report), config.reportCacheDays * 86400);
+              await saveReport(report);
               return report;
             } finally {
               await settle(cost);

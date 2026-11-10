@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Claim, Founder, Point, Report } from "@/lib/schema";
 import { FundingBars, HBars, HeadcountLine } from "./charts";
+import { DeepenButton, useDeepen } from "./Deepen";
 import {
   Card,
   Cite,
@@ -161,6 +162,7 @@ export function FoundersSection({ r }: { r: Report }) {
       id="founders"
       eyebrow="02 · Founders & leadership"
       title="Who built it"
+      action={<DeepenButton section="founders" label="Research founders in depth" />}
       summary={
         people.length ? (
           <>
@@ -470,6 +472,7 @@ export function InvestorsSection({ r }: { r: Report }) {
       id="investors"
       eyebrow="04 · Investors & board"
       title="Who backs it"
+      action={<DeepenButton section="investors" label="Research investors & board" />}
       summary={
         headline.length > 0 && (
           <div className="flex flex-wrap gap-x-10 gap-y-3">
@@ -622,15 +625,19 @@ export function FinancialsSection({ r }: { r: Report }) {
   const hasModel = hasClaim(f.businessModel) || f.revenueStreams.some(hasClaim) || f.commercialRelationships.some(hasClaim);
   const a = f.assessment;
   const hasAssessment = [...a.facts, ...a.strengths, ...a.risks].some((c) => !isEmptyText(c.text)) || a.questions.length > 0;
-  if (!stats.length && !profit && !hasRunway && !hasModel && !hasAssessment) return null;
+  const { enabled: canDeepen, deepened } = useDeepen();
+  const empty = !stats.length && !profit && !hasRunway && !hasModel && !hasAssessment;
+  if (empty && !(canDeepen && !deepened.includes("financials"))) return null;
 
   return (
     <Section
       id="financials"
       eyebrow="05 · Financial health"
       title="Money in, money out"
+      action={<DeepenButton section="financials" label="Dig into financials" />}
       summary="What's publicly known about the company's finances. No scores, and no guessed runway."
     >
+      {empty && <p className="text-[14px] text-muted">The first research pass found no public financial details.</p>}
       {(stats.length > 0 || profit || hasRunway) && (
         <Card className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
           {profit && (
@@ -819,7 +826,13 @@ export function HiringSection({ r }: { r: Report }) {
 export function MarketSection({ r }: { r: Report }) {
   const b = r.business;
   return (
-    <Section id="market" eyebrow="07 · Business & competition" title="What it does, and against whom" summary={<ClaimText claim={b.product} />}>
+    <Section
+      id="market"
+      eyebrow="07 · Business & competition"
+      title="What it does, and against whom"
+      summary={<ClaimText claim={b.product} />}
+      action={<DeepenButton section="market" label="Research competitors" />}
+    >
       <div className="grid gap-4 md:grid-cols-3">
         {knownStats([
           ["Customers", b.customers],

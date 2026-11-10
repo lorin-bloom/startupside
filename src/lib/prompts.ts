@@ -54,66 +54,99 @@ ${c.text.slice(0, 5000)}
 """`;
 }
 
-export function peoplePrompt(c: SiteContext) {
+/**
+ * One research pass gathers the essentials for every section. Deeper research
+ * on founders, investors, financials or competitors runs only when a reader
+ * asks for it (see DEEP_DIVES), so a report costs a fraction of a full sweep.
+ */
+export function corePrompt(c: SiteContext, jobs: string) {
   return `${context(c)}
 
-Task: research the company's identity, founders, leadership and team.
+Careers page: ${c.careersUrl || "not found on the site"}
+${jobs}
 
-1. Company basics: legal/brand name, one-line tagline, plain description, industry, headquarters, founding year, stage (e.g. "Seed", "Series B", "Public", "Bootstrapped").
-2. Every publicly identified founder: title, verified LinkedIn URL (only if seen), education, prior employers and roles, prior startups founded/co-founded with verified outcomes (acquired / shut down / active / public), domain expertise, notable achievements, prior work with co-founders, and public quotes on why they started the company. Classify repeat vs first-time founder only when reliable.
-3. Other notable leaders (non-founder executives).
-4. Team signals: current employee count, growth over 6 and 12 months, average tenure, turnover, department mix, office locations, recent senior hires and notable departures.
-   - Look hard for headcount before giving up. In order of reliability: the company's own statements (blog, About page, careers page, funding announcements), press coverage quoting the company, then public third-party estimates that appear in search results (e.g. the "employees on LinkedIn" figure on LinkedIn's public company page, PitchBook, Tracxn, Crunchbase, data providers).
-   - Record every figure you find in headcountEstimates with its date and method ("company-stated", "press", "LinkedIn members", "third-party estimate"). Estimates often disagree widely — never pick one silently.
-   - employeeCount: use a company-stated figure if one exists (status "verified"). Otherwise give the range of credible estimates, e.g. "~140–300 (third-party estimates, 2026)", with status "inferred".
-   - Growth: only from two dated figures from the same source or method (e.g. the company's own counts), stating both numbers. Never mix sources to compute growth.
-   - Never infer turnover from changes in headcount. Leave tenure/turnover unknown unless a source states them.
-   - headcountHistory only with dated, company-stated or same-method data points.
-5. A short founder assessment: domain expertise, prior entrepreneurial experience, complementary skills across the founding team, strengths and experience gaps — grounded in the facts above.
-6. Interpretation: 1–3 Points on what team signals may indicate, framed as hypotheses (status "inferred"), not proof of business health.
+Task: one efficient research pass that captures the most important public facts about this company. Breadth over depth: readers can request deeper research on founders, investors, financials and competitors later, so don't chase details.
 
-Search budget is limited: start with the company's About/Team page and founder interviews.
+Search plan (budget is small): the company's About/Team page, its latest funding announcement, and one or two reputable press or profile pages. Fetch a page only when search snippets aren't enough.
+
+Capture:
+1. Company basics: brand name, one-line tagline, plain description, industry, headquarters, founding year, stage (e.g. "Seed", "Series B", "Public", "Bootstrapped"), and LinkedIn company page URL if seen.
+2. Founders: name, title, one-line summary of relevant background, repeat vs first-time founder (only when reliable), prior startups with verified outcomes, LinkedIn URL only if seen. Plus a three-line assessment: domain expertise, prior founding experience, complementarity — relevant experience only, never pedigree.
+3. Team: current headcount (company-stated if possible; otherwise up to 3 credible third-party estimates in headcountEstimates, and a range in employeeCount with status "inferred"), 12-month growth only from two same-source figures, office locations.
+4. Funding: total raised, latest valuation if reported, every round you can confirm (name, date, amount, leads), and the lead investors.
+5. Financials: revenue/ARR, growth, profitability ("profitable"/"not_profitable" only if confirmed; otherwise "not_disclosed"), burn or cash flow, runway ("not_disclosed" unless the company stated it; never divide a round by a guessed burn), business model.
+6. Business: what the product does in plain English, primary customers, distribution, and the 3–4 main competitors with one line each.
+7. News: up to 5 material recent events, newest first.
+8. Hiring: if open roles were provided above, don't re-count them. If none were provided, list roles visible on the careers page if you fetch it, otherwise leave roles empty. Add 1–2 hypotheses (status "inferred") about what the hiring mix suggests.
+
+Leave anything you can't establish as "" / [] with status "unknown".
 
 Return JSON:
 {
   "sourceList": Source[],
-  "company": { "name": string, "tagline": string, "description": string, "industry": string, "headquarters": string, "founded": string, "stage": string, "linkedinUrl": string /* company page, only if seen in results */, "sources": string[] },
+  "company": { "name": string, "tagline": string, "description": string, "industry": string, "headquarters": string, "founded": string, "stage": string, "linkedinUrl": string, "sources": string[] },
   "founders": {
-    "people": [{ "name": string, "title": string, "linkedinUrl": string, "photoUrl": "", "founderType": "repeat"|"first-time"|"unknown", "summary": string /* one line */, "education": string[], "priorRoles": [{ "org": string, "role": string, "years": string }], "priorStartups": [{ "name": string, "role": string, "outcome": "acquired"|"shut down"|"active"|"public"|"unknown", "note": string, "sources": string[] }], "expertise": string, "achievements": string[], "cofounderHistory": string, "quotes": [{ "text": string, "exact": boolean, "context": string, "sources": string[] }], "sources": string[] }],
+    "people": [{ "name": string, "title": string, "linkedinUrl": string, "founderType": "repeat"|"first-time"|"unknown", "summary": string, "priorStartups": [{ "name": string, "role": string, "outcome": "acquired"|"shut down"|"active"|"public"|"unknown", "note": string, "sources": string[] }], "sources": string[] }],
+    "assessment": { "domainExpertise": Claim, "entrepreneurialExperience": Claim, "complementarity": Claim }
+  },
+  "team": { "employeeCount": Claim, "growth12m": Claim, "headcountHistory": [{ "date": string, "count": number, "sources": string[] }], "headcountEstimates": [{ "value": string, "date": string, "method": string, "sources": string[] }], "locations": [{ "name": string, "note": string, "sources": string[] }] },
+  "funding": {
+    "total": Claim, "valuation": Claim,
+    "rounds": [{ "name": string, "date": string /* YYYY-MM or YYYY-MM-DD */, "amountUsd": number|null, "amountLabel": string /* "$82M", or "" */, "valuationLabel": string, "leads": string[], "participants": string[], "sources": string[] }],
+    "investors": [{ "name": string, "firm": string, "kind": "vc"|"angel"|"corporate"|"accelerator"|"other", "isLead": boolean, "website": string, "rationale": string, "sources": string[] }]
+  },
+  "financials": {
+    "revenue": Claim, "revenueGrowth": Claim, "burn": Claim, "businessModel": Claim,
+    "profitability": { "status": "profitable"|"not_profitable"|"not_disclosed", "detail": string, "sources": string[] },
+    "runway": { "status": "disclosed"|"estimated"|"not_disclosed", "value": string, "assumptions": string, "neededInfo": [], "sources": string[] }
+  },
+  "business": { "product": Claim, "customers": Claim, "businessModel": Claim, "distribution": Claim, "competitors": [{ "name": string, "website": string, "positioning": string, "difference": string, "sources": string[] }] },
+  "news": [{ "date": string, "eventDate": string, "kind": "funding"|"product"|"acquisition"|"partnership"|"leadership"|"customer"|"regulatory"|"other", "title": string, "summary": string, "sources": string[] }],
+  "hiring": { "roles": [{ "title": string, "department": string, "location": string, "workMode": string, "salary": string, "url": string }], "note": string, "interpretation": Point[] }
+}
+where ${CLAIM}; ${POINT}; ${SOURCE}.`;
+}
+
+export type DeepSection = "founders" | "investors" | "financials" | "market";
+
+export const DEEP_DIVES: Record<DeepSection, { task: string; shape: string }> = {
+  founders: {
+    task: `Research the founders and leadership in depth:
+1. Every publicly identified founder: title, verified LinkedIn URL (only if seen), education, prior employers and roles, prior startups with verified outcomes, domain expertise, notable achievements, prior work with co-founders, and public quotes on why they started the company (exact only if seen).
+2. Other notable leaders (non-founder executives), recent senior hires and notable leadership departures, with dates.
+3. Founder assessment: domain expertise, prior founding experience, complementary skills, strengths, and experience gaps — relevant experience only, never pedigree or demographics.`,
+    shape: `{
+  "sourceList": Source[],
+  "founders": {
+    "people": [{ "name": string, "title": string, "linkedinUrl": string, "photoUrl": "", "founderType": "repeat"|"first-time"|"unknown", "summary": string, "education": string[], "priorRoles": [{ "org": string, "role": string, "years": string }], "priorStartups": [{ "name": string, "role": string, "outcome": "acquired"|"shut down"|"active"|"public"|"unknown", "note": string, "sources": string[] }], "expertise": string, "achievements": string[], "cofounderHistory": string, "quotes": [{ "text": string, "exact": boolean, "context": string, "sources": string[] }], "sources": string[] }],
     "otherLeaders": Person[],
     "assessment": { "domainExpertise": Claim, "entrepreneurialExperience": Claim, "complementarity": Claim, "strengths": Claim[], "gaps": Claim[] }
   },
-  "team": { "employeeCount": Claim, "growth6m": Claim, "growth12m": Claim, "tenure": Claim, "turnover": Claim, "headcountHistory": [{ "date": string, "count": number, "sources": string[] }], "headcountEstimates": [{ "value": string, "date": string, "method": string, "sources": string[] }], "departments": [{ "name": string, "share": string, "sources": string[] }], "locations": [{ "name": string, "note": string, "sources": string[] }], "leadershipHires": Person[], "leadershipDepartures": Person[], "interpretation": Point[] }
-}
-where ${CLAIM}; ${POINT}; ${SOURCE}; ${PERSON}.`;
-}
-
-export function capitalPrompt(c: SiteContext) {
-  return `${context(c)}
-
-Task: research funding, investors, board, financial health and recent news.
-
-1. Funding: total disclosed funding (with date), latest valuation only if publicly reported (say who reported it), every round (name, date, amount, valuation if disclosed, leads, participants). Prefer the company's or lead investor's announcement for each round.
-2. Investors: lead and notable institutional investors, verified angels, firm websites, the partner associated with the deal when confirmed, a few relevant prior investments, and why they invested (exact quote only if seen in an announcement/post; otherwise a paraphrase with exact=false).
-3. Board: only publicly disclosed directors/observers/independent directors. Do NOT assume a lead investor holds a board seat. If nothing is disclosed, return [] and leave boardNote "".
-4. Other backers: advisors, notable customers, commercial partners and public endorsements — classify each relationship precisely. A social media mention is not an investment or endorsement.
-5. Financial health: revenue/ARR, growth, profitability, gross margin, burn, runway, business model, revenue streams, major commercial relationships.
-   - Profitability: "profitable" or "not_profitable" only if confirmed by the company or credible reporting citing the company; otherwise "not_disclosed". Never infer it from funding, hiring, revenue or age.
-   - Runway: "disclosed" if the company stated cash/burn/runway; "estimated" only if both cash and burn are reliably sourced (explain assumptions). Never divide the last round by an assumed burn. Otherwise "not_disclosed" with value "".
-   - Assessment: separate known facts, potential strengths, risks, and unanswered questions. No scores.
-6. News: up to 8 material recent events (funding, product, acquisitions, partnerships, leadership, major customers, regulatory), newest first, each with its source. "date" is publication date; "eventDate" only if different.
-
-Return JSON:
-{
+  "team": { "leadershipHires": Person[], "leadershipDepartures": Person[] }
+}`,
+  },
+  investors: {
+    task: `Research the investors, board and backers in depth:
+1. Lead and notable institutional investors, verified angels, firm websites, the partner associated with the deal when confirmed, a few relevant prior investments, and why they invested (exact quote only if seen in an announcement or post; otherwise paraphrase with rationaleExact=false).
+2. Board: only publicly disclosed directors, observers and independent directors. Never assume a lead investor holds a board seat. Return [] if none are disclosed.
+3. Other backers: advisors, notable customers, commercial partners and public endorsements, each classified precisely. A social media mention is not an investment or endorsement.`,
+    shape: `{
   "sourceList": Source[],
   "funding": {
-    "total": Claim, "valuation": Claim,
-    "rounds": [{ "name": string, "date": string /* YYYY-MM or YYYY-MM-DD */, "amountUsd": number|null, "amountLabel": string /* e.g. "$82M", or "" if not disclosed */, "valuationLabel": string, "leads": string[], "participants": string[], "sources": string[] }],
     "investors": [{ "name": string, "firm": string, "kind": "vc"|"angel"|"corporate"|"accelerator"|"other", "isLead": boolean, "website": string, "linkedinUrl": string, "partner": string, "notableInvestments": string[], "rationale": string, "rationaleExact": boolean, "sources": string[] }],
     "board": [{ "name": string, "seat": "director"|"observer"|"independent"|"founder"|"unknown", "affiliation": string, "background": string, "sources": string[] }],
-    "boardNote": string,
+    "boardNote": "",
     "backers": [{ "name": string, "relationship": "investor"|"advisor"|"customer"|"partner"|"endorsement", "detail": string, "sources": string[] }]
+  }
+}`,
   },
+  financials: {
+    task: `Research financial health in depth: revenue or ARR, growth, profitability, gross margin, burn, runway, business model, revenue streams and major commercial relationships.
+- Profitability: "profitable" or "not_profitable" only if confirmed by the company or credible reporting citing the company; otherwise "not_disclosed". Never infer it from funding, hiring, revenue or age.
+- Runway: "disclosed" if the company stated cash, burn or runway; "estimated" only if both cash and burn are reliably sourced (explain assumptions). Never divide the last round by an assumed burn. Otherwise "not_disclosed" with value "".
+- Assessment: separate known facts, potential strengths, risks and unanswered questions. No scores.`,
+    shape: `{
+  "sourceList": Source[],
   "financials": {
     "revenue": Claim, "revenueGrowth": Claim,
     "profitability": { "status": "profitable"|"not_profitable"|"not_disclosed", "detail": string, "sources": string[] },
@@ -121,35 +154,36 @@ Return JSON:
     "runway": { "status": "disclosed"|"estimated"|"not_disclosed", "value": string, "assumptions": string, "neededInfo": string[], "sources": string[] },
     "businessModel": Claim, "revenueStreams": Claim[], "commercialRelationships": Claim[],
     "assessment": { "facts": Claim[], "strengths": Claim[], "risks": Claim[], "questions": string[] }
+  }
+}`,
   },
-  "news": [{ "date": string, "eventDate": string, "kind": "funding"|"product"|"acquisition"|"partnership"|"leadership"|"customer"|"regulatory"|"other", "title": string, "summary": string, "sources": string[] }]
-}
-where ${CLAIM}; ${SOURCE}.`;
-}
+  market: {
+    task: `Research the competitive landscape in depth:
+1. Main competitors (3–6): name, website, positioning, and concretely how this company differs.
+2. Differentiation: 2–4 concrete, sourced points. No unsupported claims of market leadership.
+3. Distribution strategy (product-led, sales-led, partnerships) and 2–3 relevant, sourced market trends.`,
+    shape: `{
+  "sourceList": Source[],
+  "business": { "distribution": Claim, "differentiation": Claim[], "trends": Claim[], "competitors": [{ "name": string, "website": string, "positioning": string, "difference": string, "sources": string[] }] }
+}`,
+  },
+};
 
-export function marketPrompt(c: SiteContext, jobs: string) {
-  return `${context(c)}
+export function deepPrompt(section: DeepSection, companyName: string, website: string, today: string, known: string) {
+  const d = DEEP_DIVES[section];
+  return `Company: ${companyName} (${website})
+Today's date: ${today}
 
-Careers page: ${c.careersUrl || "not found on the site"}
-${jobs}
+What the dashboard already knows about this area (from an earlier research pass; verify and extend it, don't just repeat it):
+${known}
 
-Task: explain the business and its competitive landscape, and interpret hiring.
+${d.task}
 
-1. Product in plain English (what it does, for whom, in one or two sentences a non-expert understands).
-2. Primary customers, business model, distribution strategy (e.g. product-led, sales-led, partnerships).
-3. Differentiation: 2–4 concrete, sourced points. Avoid unsupported claims of market leadership.
-4. Main competitors (3–6): name, website, positioning, and how this company differs.
-5. Relevant market trends (2–3), sourced.
-6. Hiring: if open roles were provided above, do not re-count them. If none were provided, try the careers page with web_fetch and list roles you can see (title, department, location, work mode, salary if listed, URL); if you can't access listings, return an empty roles list and explain in "note".
-7. Hiring interpretation: 1–3 Points on what the hiring mix may suggest about priorities. These are hypotheses (status "inferred"), not confirmed strategy.
+Leave anything you can't establish as "" / [] with status "unknown".
 
 Return JSON:
-{
-  "sourceList": Source[],
-  "business": { "product": Claim, "customers": Claim, "businessModel": Claim, "distribution": Claim, "differentiation": Claim[], "trends": Claim[], "competitors": [{ "name": string, "website": string, "positioning": string, "difference": string, "sources": string[] }] },
-  "hiring": { "roles": [{ "title": string, "department": string, "location": string, "workMode": string, "salary": string, "url": string }], "note": string, "interpretation": Point[] }
-}
-where ${CLAIM}; ${POINT}; ${SOURCE}.`;
+${d.shape}
+where ${CLAIM}; ${SOURCE}; ${PERSON}.`;
 }
 
 export function synthesisPrompt(researchJson: string) {

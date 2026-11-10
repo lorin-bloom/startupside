@@ -104,12 +104,15 @@ export function Section({
   eyebrow,
   title,
   summary,
+  action,
   children,
 }: {
   id: string;
   eyebrow: string;
   title: string;
   summary?: ReactNode;
+  /** Optional control under the title, e.g. "Research deeper". */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -118,6 +121,7 @@ export function Section({
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-faint">{eyebrow}</p>
           <h2 className="mt-1.5 font-serif text-[2rem] leading-[1.05] tracking-[-0.01em] sm:text-[2.5rem]">{title}</h2>
+          {action && <div className="mt-3">{action}</div>}
         </div>
         {summary && <div className="text-[15px] leading-relaxed text-ink-2 sm:pb-1.5">{summary}</div>}
       </div>

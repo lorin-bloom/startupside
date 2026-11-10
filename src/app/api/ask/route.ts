@@ -1,11 +1,11 @@
 import { apiErrorMessage, runAgent } from "@/lib/claude";
-import { config, liveStatus } from "@/lib/config";
+import { config, isHaiku, liveStatus } from "@/lib/config";
 import { normalizeDomain } from "@/lib/domain";
 import { checkRateLimit, clientIp, reserveSpend } from "@/lib/limits";
 import { ASK_SYSTEM } from "@/lib/prompts";
 import { Report } from "@/lib/schema";
 import { getSample } from "@/data/samples";
-import { store } from "@/lib/store";
+import { getCachedReport } from "@/lib/report-cache";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -33,8 +33,7 @@ export async function POST(req: Request) {
   // Prefer server-held research; fall back to the copy the browser is showing (size-capped).
   let report: Report | null = getSample(domain);
   if (!report) {
-    const hit = await store.get(`report:v1:${domain}`);
-    if (hit) report = Report.parse(JSON.parse(hit));
+    report = await getCachedReport(domain);
   }
   if (!report && body.report && JSON.stringify(body.report).length < 400_000) report = Report.parse(body.report);
   if (!report) return Response.json({ error: "Research for this company has expired. Re-run the report first." }, { status: 404 });
@@ -57,8 +56,8 @@ export async function POST(req: Request) {
       prompt: `Research report on ${report.company.name || domain} (JSON):\n${JSON.stringify(context)}\n\n${
         history ? `Conversation so far:\n${history}\n\n` : ""
       }Question: ${question}`,
-      maxSearches: config.isHaiku ? 3 : 4,
-      maxFetches: config.isHaiku ? 1 : 2,
+      maxSearches: isHaiku(config.models.research) ? 3 : 4,
+      maxFetches: isHaiku(config.models.research) ? 1 : 2,
       maxTokens: 6000,
       effort: "low",
     });

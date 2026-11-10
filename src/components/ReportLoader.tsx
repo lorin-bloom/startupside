@@ -8,11 +8,34 @@ import { ReportView } from "./ReportView";
 const STEPS = [
   ["site", "Reading the company website"],
   ["jobs", "Checking public job boards"],
-  ["people", "Researching founders and team"],
-  ["capital", "Tracing funding, investors and financials"],
-  ["market", "Mapping the market and competitors"],
+  ["core", "Researching founders, funding, team and market"],
   ["synthesis", "Weighing the bull and bear case"],
 ] as const;
+
+/**
+ * Reports are also kept in this browser for 14 days, so reopening a company
+ * (even tomorrow) shows the saved findings instantly and costs nothing.
+ */
+const LOCAL_DAYS = 14;
+const localKey = (domain: string) => `startupside:report:${domain}`;
+
+function readLocal(domain: string): Report | null {
+  try {
+    const raw = localStorage.getItem(localKey(domain));
+    if (!raw) return null;
+    const { savedAt, report } = JSON.parse(raw) as { savedAt: number; report: Report };
+    return Date.now() - savedAt < LOCAL_DAYS * 86_400_000 ? report : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocal(report: Report) {
+  if (report.mode !== "live") return;
+  try {
+    localStorage.setItem(localKey(report.company.domain), JSON.stringify({ savedAt: Date.now(), report }));
+  } catch {}
+}
 
 type StepState = "pending" | "active" | "done" | "warn";
 type Ev =
@@ -59,6 +82,7 @@ export function ReportLoader({ domain, initial }: { domain: string; initial: Rep
             if (ev.type === "progress") setSteps((s) => ({ ...s, [ev.step]: { state: ev.state, message: ev.message } }));
             else if (ev.type === "result") {
               setReport(ev.report);
+              writeLocal(ev.report);
               finished = true;
             } else if (ev.type === "error") {
               setError({ code: ev.code, message: ev.message });
@@ -79,10 +103,18 @@ export function ReportLoader({ domain, initial }: { domain: string; initial: Rep
   useEffect(() => {
     if (initial || started.current) return;
     started.current = true;
-    run();
-  }, [initial, run]);
+    const saved = readLocal(domain);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restore a report saved in this browser
+    if (saved) setReport(saved);
+    else run();
+  }, [initial, domain, run]);
 
-  if (report) return <ReportView report={report} onRefresh={() => run(true)} />;
+  const update = useCallback((next: Report) => {
+    setReport(next);
+    writeLocal(next);
+  }, []);
+
+  if (report) return <ReportView report={report} onRefresh={() => run(true)} onReportChange={update} />;
 
   return (
     <div className="min-h-dvh">
@@ -123,7 +155,7 @@ export function ReportLoader({ domain, initial }: { domain: string; initial: Rep
         ) : (
           <>
             <p className="mt-3 text-[15px] text-muted">
-              Searching the web, reading primary sources and checking every citation. This usually takes one to three minutes.
+              Searching the web, reading primary sources and checking every citation. This usually takes about a minute.
             </p>
             <ol className="mt-10 space-y-4" aria-live="polite">
               {STEPS.map(([id, label]) => {

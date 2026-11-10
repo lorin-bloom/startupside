@@ -261,6 +261,8 @@ export const Report = obj({
   ),
   sources: arr(Source),
   notes: strArr,
+  /** Sections that have had on-demand deep research. */
+  deepened: strArr,
 });
 export type Report = z.infer<typeof Report>;
 export type Snapshot = Report["snapshot"];
