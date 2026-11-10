@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import type { Claim, Source, Status } from "@/lib/schema";
+import { hasClaim, isEmptyText } from "@/lib/undisclosed";
 
 /* ---------- Sources & citations ---------- */
 
@@ -82,18 +83,16 @@ export function StatusLegend() {
   );
 }
 
-export function isEmptyText(t: string | undefined | null) {
-  return !t || /^(not disclosed|unknown|n\/a|none|—|-)\.?$/i.test(t.trim());
-}
+export { isEmptyText, hasClaim };
 
-/** Renders a claim (or "Not disclosed") with its status dot and citations. */
-export function ClaimText({ claim, fallback = "Not disclosed", className = "" }: { claim: Claim; fallback?: string; className?: string }) {
-  const empty = isEmptyText(claim.text);
+/** Renders a claim with its status dot and citations; renders nothing if it's undisclosed. */
+export function ClaimText({ claim, className = "" }: { claim: Claim; className?: string }) {
+  if (isEmptyText(claim.text)) return null;
   return (
     <span className={className}>
-      <StatusDot status={empty ? "unknown" : claim.status} className="mr-2 -translate-y-[2px]" />
-      <span className={empty ? "text-faint" : ""}>{empty ? fallback : claim.text}</span>
-      {!empty && <Cite ids={claim.sources} />}
+      <StatusDot status={claim.status} className="mr-2 -translate-y-[2px]" />
+      <span>{claim.text}</span>
+      <Cite ids={claim.sources} />
     </span>
   );
 }

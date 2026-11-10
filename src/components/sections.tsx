@@ -16,6 +16,7 @@ import {
   Tag,
   formatDate,
   hostOf,
+  hasClaim,
   isEmptyText,
 } from "./ui";
 
@@ -147,6 +148,13 @@ function AssessRow({ label, claim }: { label: string; claim: Claim }) {
 
 export function FoundersSection({ r }: { r: Report }) {
   const { people, otherLeaders, assessment } = r.founders;
+  const assessRows = knownStats([
+    ["Domain expertise", assessment.domainExpertise],
+    ["Founding experience", assessment.entrepreneurialExperience],
+    ["Team complementarity", assessment.complementarity],
+  ]);
+  const strengths = assessment.strengths.filter(hasClaim);
+  const gaps = assessment.gaps.filter((c) => !isEmptyText(c.text));
   const repeat = people.filter((p) => p.founderType === "repeat").length;
   return (
     <Section
@@ -170,19 +178,21 @@ export function FoundersSection({ r }: { r: Report }) {
         ))}
       </div>
 
-      <Card className="mt-4 px-5 py-2">
-        <div className="divide-y divide-line">
-          <AssessRow label="Domain expertise" claim={assessment.domainExpertise} />
-          <AssessRow label="Founding experience" claim={assessment.entrepreneurialExperience} />
-          <AssessRow label="Team complementarity" claim={assessment.complementarity} />
-          {(assessment.strengths.length > 0 || assessment.gaps.length > 0) && (
-            <div className="grid gap-4 py-4 sm:grid-cols-2">
-              <ClaimList title="Strengths" items={assessment.strengths} />
-              <ClaimList title="Gaps to probe" items={assessment.gaps} />
-            </div>
-          )}
-        </div>
-      </Card>
+      {(assessRows.length > 0 || strengths.length > 0 || gaps.length > 0) && (
+        <Card className="mt-4 px-5 py-2">
+          <div className="divide-y divide-line">
+            {assessRows.map(([label, claim]) => (
+              <AssessRow key={label} label={label} claim={claim} />
+            ))}
+            {(strengths.length > 0 || gaps.length > 0) && (
+              <div className="grid gap-4 py-4 sm:grid-cols-2">
+                <ClaimList title="Strengths" items={strengths} />
+                <ClaimList title="Gaps to probe" items={gaps} />
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {otherLeaders.length > 0 && (
         <div className="mt-5">
@@ -203,12 +213,13 @@ export function FoundersSection({ r }: { r: Report }) {
 }
 
 function ClaimList({ title, items, tone }: { title: string; items: Claim[]; tone?: "bull" | "bear" }) {
-  if (!items.length) return null;
+  const shown = items.filter((c) => !isEmptyText(c.text));
+  if (!shown.length) return null;
   return (
     <div>
       <p className={`mb-2 text-[13px] font-semibold ${tone === "bull" ? "text-bull" : tone === "bear" ? "text-bear" : "text-ink"}`}>{title}</p>
       <ul className="space-y-2 text-[14px] leading-relaxed">
-        {items.map((c, i) => (
+        {shown.map((c, i) => (
           <li key={i}>
             <ClaimText claim={c} />
           </li>
@@ -220,23 +231,35 @@ function ClaimList({ title, items, tone }: { title: string; items: Claim[]; tone
 
 /* ================= Team ================= */
 
-function Stat({ label, claim, big = false }: { label: string; claim: Claim; big?: boolean }) {
-  const empty = isEmptyText(claim.text);
+/** A labeled fact. Callers only render it for claims that have a value. */
+function Stat({ label, claim }: { label: string; claim: Claim }) {
   return (
     <div className="min-w-0">
       <Label>{label}</Label>
-      <p className={`mt-1.5 leading-snug ${big ? "font-serif text-[1.65rem] leading-tight" : "text-[14px]"} ${empty ? "text-faint" : ""}`}>
-        {!empty && !big && <StatusDot status={claim.status} className="mr-1.5 -translate-y-[2px]" />}
-        {empty ? (big ? "Not disclosed" : claim.text || "Not disclosed") : claim.text}
-        {!empty && <Cite ids={claim.sources} />}
+      <p className="mt-1.5 text-[14px] leading-snug">
+        <StatusDot status={claim.status} className="mr-1.5 -translate-y-[2px]" />
+        {claim.text}
+        <Cite ids={claim.sources} />
       </p>
     </div>
   );
 }
 
+/** Only the facts that are actually known. */
+function knownStats(pairs: [string, Claim][]) {
+  return pairs.filter(([, c]) => hasClaim(c));
+}
+
 export function TeamSection({ r }: { r: Report }) {
   const t = r.team;
   const departmentsFromRoles = useMemo(() => countBy(r.hiring.roles.map((x) => x.department)), [r.hiring.roles]);
+  const stats = knownStats([
+    ["Employees", t.employeeCount],
+    ["6-month growth", t.growth6m],
+    ["12-month growth", t.growth12m],
+    ["Average tenure", t.tenure],
+    ["Turnover", t.turnover],
+  ]);
   return (
     <Section
       id="team"
@@ -244,12 +267,13 @@ export function TeamSection({ r }: { r: Report }) {
       title="How the team is growing"
       summary="Public signals only. Hiring and departures are hints about a company's direction, not proof of its health."
     >
-      <Card className="grid grid-cols-2 gap-x-6 gap-y-6 p-5 sm:grid-cols-4">
-        <Stat label="Employees" claim={t.employeeCount} />
-        <Stat label="6-month growth" claim={t.growth6m} />
-        <Stat label="12-month growth" claim={t.growth12m} />
-        <Stat label="Average tenure" claim={t.tenure} />
-      </Card>
+      {stats.length > 0 && (
+        <Card className="grid grid-cols-2 gap-x-6 gap-y-6 p-5 sm:grid-cols-4">
+          {stats.map(([label, claim]) => (
+            <Stat key={label} label={label} claim={claim} />
+          ))}
+        </Card>
+      )}
 
       {t.headcountEstimates.length > 0 && (
         <div className="mt-3 px-1">
@@ -337,13 +361,6 @@ export function TeamSection({ r }: { r: Report }) {
       )}
 
       {t.interpretation.length > 0 && <Signals title="What these signals may suggest" points={t.interpretation} />}
-
-      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
-        <span>
-          <StatusDot status="unknown" className="mr-1.5 -translate-y-[2px]" />
-          Turnover: {t.turnover.text || "Not disclosed"}
-        </span>
-      </div>
 
       <LinkedInInsights r={r} />
     </Section>
@@ -443,6 +460,10 @@ export function InvestorsSection({ r }: { r: Report }) {
     for (const b of f.backers) groups.set(b.relationship, [...(groups.get(b.relationship) ?? []), b]);
     return [...groups];
   }, [f.backers]);
+  const headline = knownStats([
+    ["Total disclosed", f.total],
+    ["Latest valuation", f.valuation],
+  ]);
 
   return (
     <Section
@@ -450,20 +471,18 @@ export function InvestorsSection({ r }: { r: Report }) {
       eyebrow="04 · Investors & board"
       title="Who backs it"
       summary={
-        <div className="flex flex-wrap gap-x-10 gap-y-3">
-          <div>
-            <Label>Total disclosed</Label>
-            <p className="mt-1 font-serif text-[1.65rem] leading-tight">
-              <ClaimText claim={f.total} />
-            </p>
+        headline.length > 0 && (
+          <div className="flex flex-wrap gap-x-10 gap-y-3">
+            {headline.map(([label, claim]) => (
+              <div key={label}>
+                <Label>{label}</Label>
+                <p className="mt-1 font-serif text-[1.65rem] leading-tight">
+                  <ClaimText claim={claim} />
+                </p>
+              </div>
+            ))}
           </div>
-          <div>
-            <Label>Latest valuation</Label>
-            <p className="mt-1 font-serif text-[1.65rem] leading-tight">
-              <ClaimText claim={f.valuation} />
-            </p>
-          </div>
-        </div>
+        )
       }
     >
       {f.rounds.length > 0 && (
@@ -479,8 +498,13 @@ export function InvestorsSection({ r }: { r: Report }) {
               <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-faint">{formatDate(round.date)}</p>
               <p className="mt-1 font-serif text-2xl">{round.name}</p>
               <p className="mt-1 text-[15px]">
-                {round.amountLabel || "Amount undisclosed"}
-                {round.valuationLabel && <span className="text-muted"> · {round.valuationLabel} valuation</span>}
+                {!isEmptyText(round.amountLabel) && round.amountLabel}
+                {!isEmptyText(round.valuationLabel) && (
+                  <span className="text-muted">
+                    {!isEmptyText(round.amountLabel) && " · "}
+                    {round.valuationLabel} valuation
+                  </span>
+                )}
                 <Cite ids={round.sources} />
               </p>
               {round.leads.length > 0 && (
@@ -534,9 +558,9 @@ export function InvestorsSection({ r }: { r: Report }) {
       )}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <Card className="p-5">
-          <Label>Board of directors</Label>
-          {f.board.length ? (
+        {f.board.length > 0 && (
+          <Card className="p-5">
+            <Label>Board of directors</Label>
             <ul className="mt-3 space-y-2 text-[14px]">
               {f.board.map((b) => (
                 <li key={b.name}>
@@ -550,11 +574,8 @@ export function InvestorsSection({ r }: { r: Report }) {
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="mt-3 text-[14px] text-faint">Not publicly disclosed</p>
-          )}
-          {f.boardNote && <p className="mt-3 text-[13px] leading-relaxed text-muted">{f.boardNote}</p>}
-        </Card>
+          </Card>
+        )}
         {backers.length > 0 && (
           <Card className="p-5">
             <Label>Other backers & relationships</Label>
@@ -586,57 +607,64 @@ export function InvestorsSection({ r }: { r: Report }) {
 const PROFIT = {
   profitable: { label: "Confirmed profitable", tone: "bull" },
   not_profitable: { label: "Confirmed not yet profitable", tone: "bear" },
-  not_disclosed: { label: "Not publicly disclosed", tone: "neutral" },
 } as const;
 
 export function FinancialsSection({ r }: { r: Report }) {
   const f = r.financials;
-  const p = PROFIT[f.profitability.status];
-  const runwayLabel = f.runway.status === "not_disclosed" ? "Not publicly disclosed" : f.runway.value;
+  const profit = f.profitability.status === "not_disclosed" ? null : PROFIT[f.profitability.status];
+  const stats = knownStats([
+    ["Revenue / ARR", f.revenue],
+    ["Growth", f.revenueGrowth],
+    ["Gross margin", f.grossMargin],
+    ["Burn / cash flow", f.burn],
+  ]);
+  const hasRunway = f.runway.status !== "not_disclosed" && !isEmptyText(f.runway.value);
+  const hasModel = hasClaim(f.businessModel) || f.revenueStreams.some(hasClaim) || f.commercialRelationships.some(hasClaim);
+  const a = f.assessment;
+  const hasAssessment = [...a.facts, ...a.strengths, ...a.risks].some((c) => !isEmptyText(c.text)) || a.questions.length > 0;
+  if (!stats.length && !profit && !hasRunway && !hasModel && !hasAssessment) return null;
+
   return (
     <Section
       id="financials"
       eyebrow="05 · Financial health"
       title="Money in, money out"
-      summary="Private companies disclose little. Unknowns are shown as unknowns — no scores, no guessed runway."
+      summary="What's publicly known about the company's finances. No scores, and no guessed runway."
     >
-      <Card className="grid grid-cols-1 divide-y divide-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-3">
-        <div className="space-y-5 p-5">
-          <Stat label="Revenue / ARR" claim={f.revenue} />
-          <Stat label="Growth" claim={f.revenueGrowth} />
-        </div>
-        <div className="space-y-5 p-5">
-          <div>
-            <Label>Profitability</Label>
-            <div className="mt-2">
-              <Tag tone={p.tone}>{p.label}</Tag>
+      {(stats.length > 0 || profit || hasRunway) && (
+        <Card className="grid grid-cols-1 gap-x-8 gap-y-6 p-5 sm:grid-cols-2 lg:grid-cols-3">
+          {profit && (
+            <div className="min-w-0">
+              <Label>Profitability</Label>
+              <div className="mt-2">
+                <Tag tone={profit.tone}>{profit.label}</Tag>
+              </div>
+              {f.profitability.detail && (
+                <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
+                  {f.profitability.detail}
+                  <Cite ids={f.profitability.sources} />
+                </p>
+              )}
             </div>
-            {f.profitability.detail && (
-              <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">
-                {f.profitability.detail}
-                <Cite ids={f.profitability.sources} />
+          )}
+          {stats.map(([label, claim]) => (
+            <Stat key={label} label={label} claim={claim} />
+          ))}
+          {hasRunway && (
+            <div className="min-w-0">
+              <Label>Runway</Label>
+              <p className="mt-1.5 text-[14px]">
+                {f.runway.status === "estimated" && <Tag tone="warn">Estimate</Tag>} {f.runway.value}
+                <Cite ids={f.runway.sources} />
               </p>
-            )}
-          </div>
-          <Stat label="Gross margin" claim={f.grossMargin} />
-        </div>
-        <div className="space-y-5 p-5 sm:col-span-2 sm:border-t sm:border-line lg:col-span-1 lg:border-t-0">
-          <Stat label="Burn / cash flow" claim={f.burn} />
-          <div>
-            <Label>Runway</Label>
-            <p className={`mt-1.5 text-[14px] ${f.runway.status === "not_disclosed" ? "text-faint" : ""}`}>
-              {f.runway.status === "estimated" && <Tag tone="warn">Estimate</Tag>} {runwayLabel}
-              <Cite ids={f.runway.sources} />
-            </p>
-            {f.runway.assumptions && <p className="mt-1 text-[13px] leading-relaxed text-muted">{f.runway.assumptions}</p>}
-            {f.runway.neededInfo.length > 0 && (
-              <p className="mt-1 text-[13px] leading-relaxed text-muted">To assess it we&apos;d need: {f.runway.neededInfo.join("; ")}.</p>
-            )}
-          </div>
-        </div>
-      </Card>
+              {f.runway.assumptions && <p className="mt-1 text-[13px] leading-relaxed text-muted">{f.runway.assumptions}</p>}
+            </div>
+          )}
+        </Card>
+      )}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+        {hasModel && (
         <Card className="p-5">
           <Label>Business model</Label>
           <p className="mt-2 text-[14px] leading-relaxed">
@@ -666,6 +694,8 @@ export function FinancialsSection({ r }: { r: Report }) {
             </>
           )}
         </Card>
+        )}
+        {hasAssessment && (
         <Card className="p-5">
           <Label>Financial health assessment</Label>
           <div className="mt-3 grid gap-5 sm:grid-cols-2">
@@ -684,6 +714,7 @@ export function FinancialsSection({ r }: { r: Report }) {
             )}
           </div>
         </Card>
+        )}
       </div>
     </Section>
   );
@@ -700,6 +731,7 @@ export function HiringSection({ r }: { r: Report }) {
   const roles = dept ? h.roles.filter((x) => (x.department || "Other") === dept) : h.roles;
   const visible = showAll ? roles : roles.slice(0, 8);
   const salaried = h.roles.filter((x) => x.salary).length;
+  if (h.totalOpenings == null && h.roles.length === 0) return null;
 
   return (
     <Section
@@ -709,7 +741,7 @@ export function HiringSection({ r }: { r: Report }) {
       summary={
         <>
           <span className="font-serif text-[1.65rem] leading-none">
-            {h.totalOpenings == null ? "Not available" : `${h.totalOpenings} open role${h.totalOpenings === 1 ? "" : "s"}`}
+            {`${h.totalOpenings ?? h.roles.length} open role${(h.totalOpenings ?? h.roles.length) === 1 ? "" : "s"}`}
           </span>
           <span className="mt-1.5 block text-[13px] text-muted">
             {h.sourceUrl ? <ExternalLink href={h.sourceUrl}>{h.sourceLabel}</ExternalLink> : h.sourceLabel}
@@ -789,15 +821,15 @@ export function MarketSection({ r }: { r: Report }) {
   return (
     <Section id="market" eyebrow="07 · Business & competition" title="What it does, and against whom" summary={<ClaimText claim={b.product} />}>
       <div className="grid gap-4 md:grid-cols-3">
-        {[
+        {knownStats([
           ["Customers", b.customers],
           ["Business model", b.businessModel],
           ["Distribution", b.distribution],
-        ].map(([label, c]) => (
-          <Card key={label as string} className="p-5">
-            <Label>{label as string}</Label>
+        ]).map(([label, c]) => (
+          <Card key={label} className="p-5">
+            <Label>{label}</Label>
             <p className="mt-2 text-[14px] leading-relaxed">
-              <ClaimText claim={c as Claim} />
+              <ClaimText claim={c} />
             </p>
           </Card>
         ))}

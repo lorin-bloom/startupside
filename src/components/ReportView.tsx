@@ -17,7 +17,8 @@ import {
   TeamSection,
   countBy,
 } from "./sections";
-import { Cite, ClaimText, Label, SourcesContext, StatusDot, StatusLegend, Tag, buildSourceIndex, formatDate, hostOf, isEmptyText } from "./ui";
+import { isUndisclosedHeadline, undisclosedItems } from "@/lib/undisclosed";
+import { Cite, ClaimText, Label, SourcesContext, StatusDot, StatusLegend, Tag, buildSourceIndex, formatDate, hasClaim, hostOf, isEmptyText } from "./ui";
 import { SearchBox } from "./SearchBox";
 
 type CardKey = "funding" | "team" | "founders" | "financial" | "hiring" | "investorView";
@@ -69,7 +70,6 @@ function SnapshotCard({
   open: boolean;
   onToggle: () => void;
 }) {
-  const empty = isEmptyText(headline);
   return (
     <button
       type="button"
@@ -81,11 +81,9 @@ function SnapshotCard({
     >
       <div className="flex w-full items-center justify-between gap-2">
         <Label>{label}</Label>
-        <StatusDot status={empty ? "unknown" : status} />
+        <StatusDot status={status} />
       </div>
-      <p className={`mt-3 font-serif text-[1.45rem] leading-[1.1] tracking-[-0.005em] sm:text-[1.6rem] ${empty ? "text-faint" : ""}`}>
-        {empty ? "Not disclosed" : headline}
-      </p>
+      <p className="mt-3 font-serif text-[1.45rem] leading-[1.1] tracking-[-0.005em] sm:text-[1.6rem]">{headline}</p>
       <p className="mt-2 text-[13.5px] leading-snug text-muted">
         {detail}
         <Cite ids={sources} />
@@ -119,7 +117,7 @@ function Expanded({ k, r }: { k: CardKey; r: Report }) {
                   <span className="font-medium">{x.name}</span> <span className="text-muted">· {formatDate(x.date)}</span>
                   {x.leads.length > 0 && <span className="block text-[12.5px] text-muted">Led by {x.leads.slice(0, 3).join(", ")}</span>}
                 </span>
-                <span className="tabular shrink-0">{x.amountLabel || money(x.amountUsd)}</span>
+                <span className="tabular shrink-0">{x.amountLabel || (x.amountUsd ? money(x.amountUsd) : x.valuationLabel && `${x.valuationLabel} valuation`)}</span>
               </li>
             ))}
         </ul>
@@ -129,11 +127,15 @@ function Expanded({ k, r }: { k: CardKey; r: Report }) {
     team: (
       <>
         <div className="grid gap-3 text-[14px] sm:grid-cols-3">
-          <ClaimText claim={r.team.employeeCount} />
-          <span>
-            12-mo growth: <ClaimText claim={r.team.growth12m} />
-          </span>
-          <span className="text-muted">{r.team.locations.map((l) => l.name).slice(0, 4).join(" · ")}</span>
+          {hasClaim(r.team.employeeCount) && <ClaimText claim={r.team.employeeCount} />}
+          {hasClaim(r.team.growth12m) && (
+            <span>
+              12-mo growth: <ClaimText claim={r.team.growth12m} />
+            </span>
+          )}
+          {r.team.locations.length > 0 && (
+            <span className="text-muted">{r.team.locations.map((l) => l.name).slice(0, 4).join(" · ")}</span>
+          )}
         </div>
         {go("team", "Team intelligence")}
       </>
@@ -154,22 +156,30 @@ function Expanded({ k, r }: { k: CardKey; r: Report }) {
     financial: (
       <>
         <div className="grid gap-3 text-[14px] sm:grid-cols-3">
-          <span>
-            <span className="block text-xs text-muted">Revenue</span>
-            <ClaimText claim={r.financials.revenue} />
-          </span>
-          <span>
-            <span className="block text-xs text-muted">Profitability</span>
-            {r.financials.profitability.status === "profitable"
-              ? "Confirmed profitable"
-              : r.financials.profitability.status === "not_profitable"
-                ? "Confirmed not yet profitable"
-                : "Not publicly disclosed"}
-          </span>
-          <span>
-            <span className="block text-xs text-muted">Runway</span>
-            {r.financials.runway.status === "not_disclosed" ? "Not publicly disclosed" : r.financials.runway.value}
-          </span>
+          {hasClaim(r.financials.revenue) && (
+            <span>
+              <span className="block text-xs text-muted">Revenue</span>
+              <ClaimText claim={r.financials.revenue} />
+            </span>
+          )}
+          {r.financials.profitability.status !== "not_disclosed" && (
+            <span>
+              <span className="block text-xs text-muted">Profitability</span>
+              {r.financials.profitability.status === "profitable" ? "Confirmed profitable" : "Confirmed not yet profitable"}
+            </span>
+          )}
+          {r.financials.runway.status !== "not_disclosed" && !isEmptyText(r.financials.runway.value) && (
+            <span>
+              <span className="block text-xs text-muted">Runway</span>
+              {r.financials.runway.value}
+            </span>
+          )}
+          {hasClaim(r.financials.burn) && (
+            <span>
+              <span className="block text-xs text-muted">Burn / cash flow</span>
+              <ClaimText claim={r.financials.burn} />
+            </span>
+          )}
         </div>
         {go("financials", "Financial health")}
       </>
@@ -228,7 +238,7 @@ export function ReportView({ report: r, onRefresh }: { report: Report; onRefresh
     (x) => x && !isEmptyText(x),
   );
 
-  const cards: { k: CardKey; label: string; headline: string; detail: ReactNode; status: Status; sources: string[] }[] = [
+  const allCards: { k: CardKey; label: string; headline: string; detail: ReactNode; status: Status; sources: string[] }[] = [
     { k: "funding", label: "Funding", ...s.funding },
     { k: "team", label: "Team", ...s.team },
     { k: "founders", label: "Founders", ...s.founders },
@@ -252,6 +262,9 @@ export function ReportView({ report: r, onRefresh }: { report: Report; onRefresh
       sources: s.investorView.sources,
     },
   ];
+  // Cards whose headline is just "not disclosed" are dropped; the caveat line lists what is missing.
+  const cards = allCards.filter((c) => !isUndisclosedHeadline(c.headline));
+  const missing = undisclosedItems(r);
   const openIdx = open ? cards.findIndex((c) => c.k === open) : -1;
 
   return (
@@ -348,7 +361,13 @@ export function ReportView({ report: r, onRefresh }: { report: Report; onRefresh
             })}
           </div>
 
-          {r.notes.length > 0 && <p className="mt-4 text-[13px] text-muted">Note: {r.notes[0]}</p>}
+          {missing.length > 0 && (
+            <p className="mt-4 text-[13px] leading-relaxed text-muted">
+              <span className="font-medium text-ink-2">Not publicly disclosed:</span> {missing.join(", ")}. These are left out of the report rather than
+              estimated.
+            </p>
+          )}
+          {r.notes.length > 0 && <p className="mt-1.5 text-[13px] text-muted">Note: {r.notes[0]}</p>}
         </section>
 
         <FoundersSection r={r} />

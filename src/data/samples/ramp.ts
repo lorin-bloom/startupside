@@ -25,7 +25,7 @@ export const ramp = {
     funding: { headline: "~$5B raised · $60B valuation", detail: "Latest: $1.85B round, Oct 2026, co-led by Dragoneer & Thrive", status: "verified", sources: ["s2"] },
     team: { headline: "~2,600–8,500 (estimates)", detail: "Third-party 2026 estimates disagree widely; ~1,200 in 2025", status: "inferred", sources: ["s9", "s10", "s11", "s4"] },
     founders: { headline: "Eric Glyman, Karim Atiyeh, Gene Lee", detail: "Glyman & Atiyeh previously sold Paribus to Capital One (2016)", status: "verified", sources: ["s4", "s5"] },
-    financial: { headline: "FCF-positive; profit not disclosed", detail: "$2B+ annualized revenue (Oct 2026); runway not disclosed", status: "verified", sources: ["s2", "s3"] },
+    financial: { headline: "Free-cash-flow positive", detail: "$2B+ annualized revenue (Oct 2026)", status: "verified", sources: ["s2", "s3"] },
     hiring: { headline: `${board.roles.length} open roles`, detail: "Nearly half are in Sales; most based at the NYC HQ", status: "verified", sources: ["s8"] },
     investorView: {
       upside: "$2B+ revenue run-rate, growing faster, with positive free cash flow",
@@ -112,8 +112,8 @@ export const ramp = {
       { name: "Oct 2026 round", date: "2026-10", amountUsd: 1_850_000_000, amountLabel: "$1.85B", valuationLabel: "$60B", leads: ["Dragoneer", "Thrive Capital", "Founders Fund", "Sands Capital", "Avenir Growth"], participants: ["Fidelity", "T. Rowe Price", "ICONIQ", "GIC", "Coatue", "General Catalyst", "Khosla Ventures", "Lightspeed", "+ others"], sources: ["s2"] },
       { name: "Series F", date: "2026-06", amountUsd: 750_000_000, amountLabel: "$750M", valuationLabel: "$44B", leads: ["ICONIQ", "GIC", "Ontario Teachers' Pension Plan"], participants: [], sources: ["s3", "s6"] },
       { name: "Primary + tender", date: "2025-11", amountUsd: 300_000_000, amountLabel: "$300M", valuationLabel: "$32B", leads: ["Lightspeed"], participants: ["Bessemer", "1789 Capital"], sources: ["s4"] },
-      { name: "Late-stage round", date: "2025-07", amountUsd: null, amountLabel: "Undisclosed", valuationLabel: "$22.5B", leads: [], participants: [], sources: ["s4"] },
-      { name: "Series E", date: "2025-06", amountUsd: null, amountLabel: "Undisclosed", valuationLabel: "$16B", leads: ["Founders Fund"], participants: [], sources: ["s4"] },
+      { name: "Late-stage round", date: "2025-07", amountUsd: null, amountLabel: "", valuationLabel: "$22.5B", leads: [], participants: [], sources: ["s4"] },
+      { name: "Series E", date: "2025-06", amountUsd: null, amountLabel: "", valuationLabel: "$16B", leads: ["Founders Fund"], participants: [], sources: ["s4"] },
       { name: "Series D-2", date: "2024", amountUsd: 150_000_000, amountLabel: "$150M", valuationLabel: "$7.65B", leads: [], participants: [], sources: ["s4"] },
       { name: "Series D", date: "2023-08", amountUsd: 300_000_000, amountLabel: "$300M", valuationLabel: "$5.8B", leads: [], participants: [], sources: ["s4"] },
       { name: "Series C", date: "2021-08", amountUsd: 300_000_000, amountLabel: "$300M", valuationLabel: "~$3.9B", leads: [], participants: [], sources: ["s4"] },
@@ -150,7 +150,7 @@ export const ramp = {
     burn: v("Reported free-cash-flow positive (Jun 2026)", "s3"),
     runway: {
       status: "not_disclosed",
-      value: "Not publicly disclosed",
+      value: "",
       assumptions: "",
       neededInfo: ["Cash and equivalents balance", "Quarterly free cash flow or operating burn", "Credit facilities and how card receivables are financed"],
       sources: [],

@@ -4,7 +4,7 @@ export const RESEARCH_SYSTEM = `You are the research analyst behind Startupside,
 
 Integrity rules (these matter more than completeness):
 - Use real retrieved evidence. Search the web and fetch pages; prefer primary sources: the company's own site and blog, official funding announcements, investor posts, founder interviews, regulatory filings, and reputable business press.
-- Never invent numbers, people, profiles, LinkedIn URLs, quotations, dates or citations. If something can't be established, mark it unknown and say "Not disclosed" or leave the field empty.
+- Never invent numbers, people, profiles, LinkedIn URLs, quotations, dates or citations. If something can't be established, set its text to "" with status "unknown". Don't write "Not disclosed" sentences: the dashboard hides empty fields and lists what's undisclosed in one place.
 - Every source you list must be a URL that actually appeared in your search results or fetched pages. Do not construct URLs from memory.
 - Status for each claim:
   - "verified": directly supported by a retrieved source you cite.
@@ -95,11 +95,11 @@ Task: research funding, investors, board, financial health and recent news.
 
 1. Funding: total disclosed funding (with date), latest valuation only if publicly reported (say who reported it), every round (name, date, amount, valuation if disclosed, leads, participants). Prefer the company's or lead investor's announcement for each round.
 2. Investors: lead and notable institutional investors, verified angels, firm websites, the partner associated with the deal when confirmed, a few relevant prior investments, and why they invested (exact quote only if seen in an announcement/post; otherwise a paraphrase with exact=false).
-3. Board: only publicly disclosed directors/observers/independent directors. Do NOT assume a lead investor holds a board seat. If nothing is disclosed, return [] and explain in boardNote.
+3. Board: only publicly disclosed directors/observers/independent directors. Do NOT assume a lead investor holds a board seat. If nothing is disclosed, return [] and leave boardNote "".
 4. Other backers: advisors, notable customers, commercial partners and public endorsements — classify each relationship precisely. A social media mention is not an investment or endorsement.
 5. Financial health: revenue/ARR, growth, profitability, gross margin, burn, runway, business model, revenue streams, major commercial relationships.
    - Profitability: "profitable" or "not_profitable" only if confirmed by the company or credible reporting citing the company; otherwise "not_disclosed". Never infer it from funding, hiring, revenue or age.
-   - Runway: "disclosed" if the company stated cash/burn/runway; "estimated" only if both cash and burn are reliably sourced (explain assumptions). Never divide the last round by an assumed burn. Otherwise "not_disclosed" and list the information needed.
+   - Runway: "disclosed" if the company stated cash/burn/runway; "estimated" only if both cash and burn are reliably sourced (explain assumptions). Never divide the last round by an assumed burn. Otherwise "not_disclosed" with value "".
    - Assessment: separate known facts, potential strengths, risks, and unanswered questions. No scores.
 6. News: up to 8 material recent events (funding, product, acquisitions, partnerships, leadership, major customers, regulatory), newest first, each with its source. "date" is publication date; "eventDate" only if different.
 
@@ -108,7 +108,7 @@ Return JSON:
   "sourceList": Source[],
   "funding": {
     "total": Claim, "valuation": Claim,
-    "rounds": [{ "name": string, "date": string /* YYYY-MM or YYYY-MM-DD */, "amountUsd": number|null, "amountLabel": string /* e.g. "$82M" or "Undisclosed" */, "valuationLabel": string, "leads": string[], "participants": string[], "sources": string[] }],
+    "rounds": [{ "name": string, "date": string /* YYYY-MM or YYYY-MM-DD */, "amountUsd": number|null, "amountLabel": string /* e.g. "$82M", or "" if not disclosed */, "valuationLabel": string, "leads": string[], "participants": string[], "sources": string[] }],
     "investors": [{ "name": string, "firm": string, "kind": "vc"|"angel"|"corporate"|"accelerator"|"other", "isLead": boolean, "website": string, "linkedinUrl": string, "partner": string, "notableInvestments": string[], "rationale": string, "rationaleExact": boolean, "sources": string[] }],
     "board": [{ "name": string, "seat": "director"|"observer"|"independent"|"founder"|"unknown", "affiliation": string, "background": string, "sources": string[] }],
     "boardNote": string,
@@ -159,11 +159,11 @@ ${researchJson}
 
 Task: write the executive layer of the dashboard using ONLY this research. Do not search. Do not add facts that aren't in it. Cite the existing source ids.
 
-1. Six snapshot cards — each "headline" is the key fact in under 8 words; "detail" is one short line. Use "Not disclosed" when the research doesn't establish it.
+1. Six snapshot cards — each "headline" is the key fact in under 8 words; "detail" is one short line. If the research doesn't establish a card's fact, leave its headline "" (the card is hidden). Never write "Not disclosed" headlines.
    - funding: total disclosed funding + latest round.
    - founders: the founders' names as the headline; prior founding experience as the detail.
    - team: current estimated employees + growth trend if known.
-   - financial: profitability and runway if known (often "Not disclosed").
+   - financial: the strongest known financial fact (revenue, profitability, cash flow or runway); "" if none is known.
    - hiring: number of currently advertised openings.
    - investorView: biggest upside and biggest concern (one line each).
 2. Investor perspective — Bull vs. Bear:

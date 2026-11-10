@@ -25,7 +25,7 @@ export const resend = {
     funding: { headline: "$21M raised", detail: "Latest: $18M Series A (Dec 2024), led by Andreessen Horowitz", status: "verified", sources: ["r2", "r3"] },
     team: { headline: "43 people (Jun 2026)", detail: "Up from 25 six months earlier (company-stated)", status: "verified", sources: ["r7"] },
     founders: { headline: "Zeno Rocha, Bu Kinoshita", detail: "Started as a side project; prior founding history not established", status: "verified", sources: ["r3"] },
-    financial: { headline: "Profitable (company-stated)", detail: "Profitable since 2025; revenue not disclosed", status: "verified", sources: ["r7"] },
+    financial: { headline: "Profitable (company-stated)", detail: "Profitable since 2025, while growing the team 72% in six months", status: "verified", sources: ["r7"] },
     hiring: { headline: `${board.roles.length} open roles`, detail: "Mostly remote engineering", status: "verified", sources: ["r5"] },
     investorView: {
       upside: "Developer-led growth: 3M+ users and 5x revenue growth in 2025",
@@ -110,7 +110,7 @@ export const resend = {
       { name: "Michael Grinich", firm: "", kind: "angel", isLead: false, rationale: "Angel investor (CEO of WorkOS).", sources: ["r2"] },
     ],
     board: [],
-    boardNote: "No board members have been publicly disclosed. Investors are not assumed to hold board seats.",
+    boardNote: "",
     backers: [
       { name: "Warner Brothers, Decathlon, Braintrust, Raycast", relationship: "customer", detail: "Named as customers in the Series A announcement", sources: ["r2"] },
       { name: "Vercel", relationship: "partner", detail: "Vercel Marketplace integration launched Jun 2026", sources: ["r3"] },
