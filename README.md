@@ -1,5 +1,7 @@
 # Startupside
 
+**Live demo:** https://startupside.vercel.app
+
 **Know the startup behind the pitch.** Enter a company website and get a due-diligence dashboard: founders, investors and funding, team growth, hiring, financial health (with honest unknowns), competitors, a bull vs. bear investor view, and recent news. Every claim links to its source.
 
 - Three **sample reports** (Ramp, Linear, Resend) work with no API key and no cost.
