@@ -5,6 +5,7 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { Report, Status } from "@/lib/schema";
 import { AskPanel } from "./AskPanel";
 import { DeepenProvider } from "./Deepen";
+import { Track } from "./Track";
 import { money } from "./charts";
 import {
   FinancialsSection,
@@ -280,6 +281,7 @@ export function ReportView({
   return (
     <SourcesContext.Provider value={index}>
       <DeepenProvider report={r} onReportChange={onReportChange}>
+      <Track type="view" domain={r.company.domain} mode={r.mode} />
       <header className="sticky top-0 z-40 border-b border-line/80 bg-paper/85 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Link href="/" className="shrink-0 font-serif text-[1.35rem] leading-none tracking-tight">
@@ -394,7 +396,7 @@ export function ReportView({
         <footer className="mt-16 border-t border-line pt-6 text-[12.5px] leading-relaxed text-muted">
           Startupside compiles public information with AI assistance and links every claim to its source. It can be incomplete or
           out of date, and it isn&apos;t investment, legal or career advice. Paid databases (Crunchbase, PitchBook, LinkedIn Premium) are not
-          accessed.
+          accessed. Companies looked up on this site are logged anonymously so the creator can see how it&apos;s used.
         </footer>
       </main>
 

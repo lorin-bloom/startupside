@@ -6,6 +6,7 @@ import { ASK_SYSTEM } from "@/lib/prompts";
 import { Report } from "@/lib/schema";
 import { getSample } from "@/data/samples";
 import { getCachedReport } from "@/lib/report-cache";
+import { logUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -62,6 +63,7 @@ export async function POST(req: Request) {
       effort: "low",
     });
     cost = run.costUsd;
+    void logUsage(req, "question", domain, question);
     const webSources = [...new Map(run.citations.map((c) => [c.url, c])).values()].slice(0, 8);
     return Response.json({ answer: run.text.trim(), webSources });
   } catch (err) {

@@ -64,7 +64,19 @@ Measured costs: a new report on Supabase cost **$0.11**, and a "Research deeper"
 
 The app's spending cap is calculated from token usage. **Also set a monthly spend limit in the Anthropic Console** (Settings → Limits) as a hard backstop.
 
-## 4. How it works
+## 4. See who's using it
+
+The site keeps a private activity log: homepage visits, which reports people open, companies researched, deep dives and follow-up questions, with an anonymous visitor id and city/country. It never stores IP addresses. The site's footer tells visitors that lookups are logged anonymously.
+
+The log needs the Upstash storage from step 2.5. To read it, copy `KV_REST_API_URL` and `KV_REST_API_READ_ONLY_TOKEN` from the Vercel project (**Settings → Environment Variables**) into `.env.local`, then run:
+
+```bash
+node scripts/usage.mjs
+```
+
+It prints visitors, views and researched companies for the last 30 days (`node scripts/usage.mjs 7` for the last week).
+
+## 5. How it works
 
 ```
 website ─► safe fetch of homepage + careers page (blocks private networks, size/time limits)
@@ -95,7 +107,7 @@ Key files:
 - Missing data shows as "Not disclosed". Third-party headcount estimates are shown as a labeled range, never as an official number. Profitability is shown only when the company or credible reporting confirms it. Runway is never estimated by dividing the last round by a guessed burn rate.
 - No logins, scraping behind logins, or paid databases (LinkedIn Premium, Crunchbase, PitchBook).
 
-## 5. Refreshing the sample reports
+## 6. Refreshing the sample reports
 
 The samples were researched on Nov 9, 2026. Their hiring data comes from each company's public Ashby job board. To refresh the open roles:
 

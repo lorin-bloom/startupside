@@ -5,6 +5,7 @@ import { buildReport } from "@/lib/pipeline";
 import { getSample } from "@/data/samples";
 import { getCachedReport, saveReport } from "@/lib/report-cache";
 import type { Report } from "@/lib/schema";
+import { logUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
         } catch {}
       };
       const fail = (code: string, message: string) => {
+        if (domain) void logUsage(req, "new report", domain, `not run: ${code.replace("_", " ")}`);
         send({ type: "error", code, message });
         try {
           controller.close();
@@ -52,6 +54,7 @@ export async function POST(req: Request) {
         if (!body.refresh) {
           const hit = await getCachedReport(domain);
           if (hit) {
+            void logUsage(req, "cached report", domain);
             send({ type: "result", report: hit, cached: true });
             return controller.close();
           }
@@ -78,6 +81,7 @@ export async function POST(req: Request) {
               );
               cost = costUsd;
               await saveReport(report);
+              void logUsage(req, "new report", domain, `$${costUsd.toFixed(2)}${body.refresh ? " (refresh)" : ""}`);
               return report;
             } finally {
               await settle(cost);

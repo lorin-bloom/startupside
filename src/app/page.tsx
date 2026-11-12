@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SearchBox } from "@/components/SearchBox";
+import { Track } from "@/components/Track";
 import { SAMPLE_LIST, getSample } from "@/data/samples";
 
 const SECTIONS = ["Founders", "Funding & investors", "Team growth", "Financial health", "Hiring", "Competition", "Bull vs. bear"];
@@ -8,6 +9,7 @@ export default function Home() {
   const samples = SAMPLE_LIST.map((s) => ({ ...s, report: getSample(s.domain)! }));
   return (
     <div className="flex min-h-dvh flex-col">
+      <Track type="home" />
       <header className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
         <span className="font-serif text-[1.45rem] leading-none tracking-tight">
           Startup<span className="italic text-accent">side</span>
@@ -95,6 +97,7 @@ export default function Home() {
 
       <footer className="mx-auto w-full max-w-6xl border-t border-line px-4 py-6 text-[12.5px] text-muted sm:px-6">
         Research summaries from public information — not investment, legal or career advice. No paid databases or LinkedIn logins are used.
+        Companies looked up on this site are logged anonymously so the creator can see how it&apos;s used.
       </footer>
     </div>
   );

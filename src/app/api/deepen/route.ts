@@ -6,6 +6,7 @@ import { deepenReport } from "@/lib/pipeline";
 import { DEEP_DIVES, type DeepSection } from "@/lib/prompts";
 import { getCachedReport, saveReport } from "@/lib/report-cache";
 import { Report } from "@/lib/schema";
+import { logUsage } from "@/lib/usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
     const { report, costUsd } = await deepenReport(base, section);
     cost = costUsd;
     if (fromServer) await saveReport(report);
+    void logUsage(req, "deep dive", domain, `${section} · $${costUsd.toFixed(2)}`);
     return Response.json({ report });
   } catch (err) {
     return Response.json({ error: apiErrorMessage(err) }, { status: 502 });

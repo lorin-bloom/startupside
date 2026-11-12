@@ -64,4 +64,24 @@ export const store = {
     mem.set(key, { value: String(total), expiresAt: existing?.expiresAt || Date.now() + ttlSeconds * 1000 });
     return total;
   },
+
+  /** Adds to the front of a list, keeping only the newest `max` items. */
+  async push(key: string, value: string, max: number): Promise<void> {
+    if (hasRedis()) {
+      await redis(["LPUSH", key, value]);
+      await redis(["LTRIM", key, 0, max - 1]);
+      return;
+    }
+    const list = memLists.get(key) ?? [];
+    list.unshift(value);
+    memLists.set(key, list.slice(0, max));
+  },
+
+  /** The newest `count` items of a list. */
+  async range(key: string, count: number): Promise<string[]> {
+    if (hasRedis()) return ((await redis(["LRANGE", key, 0, count - 1])) as string[] | null) ?? [];
+    return (memLists.get(key) ?? []).slice(0, count);
+  },
 };
+
+const memLists = new Map<string, string[]>();
