@@ -11,6 +11,10 @@ export function SearchBox({ compact = false, autoFocus = false }: { compact?: bo
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (/^\s*https?:\/\//i.test(value)) {
+      setError("Remove the https:// and try again, like linear.app");
+      return;
+    }
     const domain = normalizeDomain(value);
     if (!domain) {
       setError("Enter a company website, like linear.app");
@@ -29,14 +33,24 @@ export function SearchBox({ compact = false, autoFocus = false }: { compact?: bo
         <input
           id="search-compact"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (error) setError("");
+          }}
           placeholder="Analyze another…"
           inputMode="url"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? "search-compact-error" : undefined}
           className="h-9 w-full rounded-full border border-line bg-card px-3.5 text-[13px] placeholder:text-faint focus:border-accent focus:outline-none"
         />
+        {error && (
+          <p id="search-compact-error" role="alert" className="absolute top-full right-0 z-20 mt-1.5 w-max max-w-[80vw] rounded-lg border border-line bg-card px-3 py-1.5 text-[12px] text-bear shadow-sm">
+            {error}
+          </p>
+        )}
       </form>
     );
 

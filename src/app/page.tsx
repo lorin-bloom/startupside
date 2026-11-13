@@ -33,9 +33,6 @@ export default function Home() {
           <div className="rise mx-auto mt-10 max-w-2xl text-left" style={{ animationDelay: "180ms" }}>
             <SearchBox />
           </div>
-          <p className="rise mt-2 text-[13px] text-muted" style={{ animationDelay: "220ms" }}>
-            No account needed. Every claim links to its source.
-          </p>
         </section>
 
         <section id="examples" className="scroll-mt-6 border-t border-line pt-12 pb-20">
