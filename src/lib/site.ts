@@ -83,9 +83,22 @@ function linkedinCompany(links: string[]): string {
   return "";
 }
 
+/** The site exists but refused our request (bot protection, rate limits, login walls). */
+export class SiteBlockedError extends Error {
+  constructor(public status: number) {
+    super(`The website responded with status ${status}`);
+  }
+}
+
+/** Minimal site info when the homepage can't be read; research continues from other sources. */
+export function unreadSite(domain: string): SiteInfo {
+  const url = `https://${domain}/`;
+  return { url, title: "", description: "", siteName: "", logoUrl: `${url}favicon.ico`, text: "", careersUrl: "", careersText: "", linkedinUrl: "", links: [] };
+}
+
 export async function readSite(domain: string): Promise<SiteInfo> {
   const home = await safeFetch(`https://${domain}/`);
-  if (home.status >= 400) throw new Error(`The website responded with status ${home.status}`);
+  if (home.status >= 400) throw new SiteBlockedError(home.status);
   const html = home.text;
   const all = links(html, home.url);
 

@@ -4,7 +4,7 @@ import { extractJson, normalizeUrl, runAgent, apiErrorMessage } from "./claude";
 import { findJobBoard, type JobBoard } from "./jobs";
 import { corePrompt, deepPrompt, RESEARCH_SYSTEM, synthesisPrompt, type DeepSection, type SiteContext } from "./prompts";
 import { Report, type Source } from "./schema";
-import { readSite } from "./site";
+import { readSite, SiteBlockedError, unreadSite } from "./site";
 
 export type StepId = "site" | "jobs" | "core" | "synthesis";
 export type Emit = (step: StepId, state: "active" | "done" | "warn", message?: string) => void;
@@ -91,17 +91,24 @@ export async function buildReport(domain: string, emit: Emit): Promise<{ report:
   const today = new Date().toISOString().slice(0, 10);
 
   emit("site", "active");
+  let siteRead = true;
   const site = await readSite(domain).catch((err: unknown) => {
+    // Many sites block automated visitors (status 403/429 etc.). The site
+    // exists, so keep going and research it from other public sources.
+    if (err instanceof SiteBlockedError) {
+      siteRead = false;
+      return unreadSite(domain);
+    }
     throw new Error(`We couldn't read https://${domain} (${err instanceof Error ? err.message : "unreachable"}). Check the address and try again.`);
   });
-  emit("site", "done");
+  emit("site", siteRead ? "done" : "warn", siteRead ? undefined : "The site blocks automated visits, so we'll use other public sources");
 
   emit("jobs", "active");
   const board = await findJobBoard(domain, site.links).catch(() => null);
   emit("jobs", board ? "done" : "warn", board ? `${board.roles.length} open roles on ${board.provider}` : "No public job board found");
 
   // One research pass for the essentials of every section (cheap model).
-  const ctx: SiteContext = { domain, url: site.url, title: site.title, description: site.description, text: site.text, careersUrl: site.careersUrl, today };
+  const ctx: SiteContext = { domain, url: site.url, title: site.title, description: site.description, text: site.text, careersUrl: site.careersUrl, today, siteRead };
   const base = new Set([site.url, site.careersUrl, board?.boardUrl ?? "", `https://${domain}`].filter(Boolean).map(normalizeUrl));
   emit("core", "active");
   let core: Awaited<ReturnType<typeof research>>;
@@ -118,7 +125,7 @@ export async function buildReport(domain: string, emit: Emit): Promise<{ report:
   const cHiring = (c.hiring ?? {}) as Json;
   const modelRoles = Array.isArray(cHiring.roles) ? cHiring.roles : [];
   const sources: Source[] = [
-    { id: "w1", title: site.title || domain, url: site.url, publisher: domain, date: "" },
+    ...(siteRead ? [{ id: "w1", title: site.title || domain, url: site.url, publisher: domain, date: "" }] : []),
     ...(board ? [{ id: "w2", title: `${board.provider} job board`, url: board.boardUrl, publisher: board.provider, date: today }] : []),
     ...core.out.sources,
   ];

@@ -40,9 +40,15 @@ export type SiteContext = {
   text: string;
   careersUrl: string;
   today: string;
+  siteRead?: boolean;
 };
 
 function context(c: SiteContext) {
+  if (c.siteRead === false)
+    return `Company website: ${c.url}
+Today's date: ${c.today}
+
+Our server couldn't read the homepage (the site blocks automated visitors). Identify the company from search results about ${c.domain}; try fetching the homepage or About page yourself only if search snippets aren't enough. Make sure every fact is about the company at this exact domain, not a similarly named one.`;
   return `Company website: ${c.url}
 Today's date: ${c.today}
 Homepage title: ${c.title}
